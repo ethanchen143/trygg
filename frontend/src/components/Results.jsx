@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { motion } from 'framer-motion'
-import { AlertTriangle, Info, ChevronDown, ChevronUp, ArrowLeft, ExternalLink } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { AlertTriangle, Info, ChevronDown, ChevronUp, ArrowLeft, ExternalLink, TrendingUp, Shield, Clock, BarChart3, Zap, Copy, Check } from 'lucide-react'
 import PortfolioSummary from './PortfolioSummary'
-import Sparkline from './Sparkline'
+import TrendingMarkets from './TrendingMarkets'
+import MarketDepthBar from './MarketDepthBar'
+import PriceChart from './PriceChart'
 
-function PositionCard({ position, index, totalCost }) {
+function PositionCard({ position, index, totalCost, featured }) {
   const [expanded, setExpanded] = useState(false)
   const side = position.side?.toUpperCase()
   const price = position.current_price ?? position.price
@@ -15,23 +17,31 @@ function PositionCard({ position, index, totalCost }) {
   const confidence = position.confidence || 0
   const confidenceLabel = confidence >= 0.8 ? 'High' : confidence >= 0.5 ? 'Med' : 'Low'
   const confidenceClass = confidence >= 0.8 ? 'high' : confidence >= 0.5 ? 'med' : 'low'
+  const isYes = side === 'YES'
+  const noPrice = 1 - (price || 0)
+  const profit = payout - allocation
 
   return (
     <motion.div
-      className="position-card"
+      className={`position-card${featured ? ' position-card--featured' : ''}${expanded ? ' position-card--expanded' : ''}`}
       onClick={() => setExpanded(!expanded)}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: index * 0.05 }}
+      transition={{ duration: 0.3, delay: index * 0.06 }}
     >
       <div className="position-card-top">
         <div className="position-card-left">
           <div className="position-card-title-row">
             <div className="position-card-title">{position.contract_title}</div>
             <span className={`confidence-badge ${confidenceClass}`}>{confidenceLabel}</span>
+            <span className={`position-side-badge-inline ${isYes ? 'yes' : 'no'}`}>
+              {side} {Math.round(price * 100)}%
+            </span>
           </div>
           <div className="position-card-subtitle">
-            {portfolioPct}% of portfolio — hedges {position.risk?.event || 'identified risk'}
+            <Shield size={12} />
+            hedges {position.risk?.event || 'identified risk'}
+            <span className="position-card-alloc">${allocation.toLocaleString()}</span>
           </div>
         </div>
         <div className="position-card-right">
@@ -43,71 +53,164 @@ function PositionCard({ position, index, totalCost }) {
         </div>
       </div>
 
-      {expanded && (
-        <div className="position-card-detail">
-          <div className="detail-top-row">
-            <span className={`position-side-badge ${side === 'YES' ? 'yes' : 'no'}`}>
-              {side}
-            </span>
-            <Sparkline seed={position.contract_title} color={side === 'YES' ? 'var(--green)' : 'var(--red)'} />
-          </div>
-          <div className="detail-grid">
-            <div>
-              <div className="detail-item-label">Entry Price</div>
-              <div className="detail-item-value">${price.toFixed(2)}</div>
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            className="position-card-detail"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {/* Market Depth Visualization */}
+            <div className="detail-depth-section">
+              <div className="detail-section-label">Market Probability</div>
+              <MarketDepthBar
+                yesPrice={price}
+                noPrice={noPrice}
+                size="large"
+              />
             </div>
-            <div>
-              <div className="detail-item-label">Return</div>
-              <div className="detail-item-value">{returnMultiple}x</div>
-            </div>
-            <div>
-              <div className="detail-item-label">Payout</div>
-              <div className="detail-item-value">${payout.toLocaleString()}</div>
-            </div>
-            <div>
-              <div className="detail-item-label">Source</div>
-              <div className="detail-item-value">
-                {position.contract_source || 'Polymarket'}
-                {position.ticker && <span className="detail-ticker">{position.ticker}</span>}
-              </div>
-            </div>
-            {position.end_date_formatted && (
-              <div>
-                <div className="detail-item-label">Expires</div>
-                <div className="detail-item-value">{position.end_date_formatted}</div>
-              </div>
-            )}
-            {position.correlation && (
-              <div>
-                <div className="detail-item-label">Correlation</div>
-                <div className="detail-item-value">
-                  <span className={`correlation-badge ${position.correlation.toLowerCase()}`}>
-                    {position.correlation}
-                  </span>
+
+            {/* Big Stats Grid */}
+            <div className="detail-stats-grid">
+              <div className="detail-stat-card">
+                <div className="detail-stat-icon">
+                  <Zap size={16} />
+                </div>
+                <div className="detail-stat-content">
+                  <div className="detail-stat-value">${price?.toFixed(2)}</div>
+                  <div className="detail-stat-label">Entry Price</div>
                 </div>
               </div>
-            )}
-            <div>
-              <div className="detail-item-label">Hedges</div>
-              <div className="detail-item-value">{position.risk?.event || '—'}</div>
+              <div className="detail-stat-card highlight">
+                <div className="detail-stat-icon green">
+                  <TrendingUp size={16} />
+                </div>
+                <div className="detail-stat-content">
+                  <div className="detail-stat-value green">{returnMultiple}x</div>
+                  <div className="detail-stat-label">Return Multiple</div>
+                </div>
+              </div>
+              <div className="detail-stat-card">
+                <div className="detail-stat-icon">
+                  <BarChart3 size={16} />
+                </div>
+                <div className="detail-stat-content">
+                  <div className="detail-stat-value">${allocation.toLocaleString()}</div>
+                  <div className="detail-stat-label">Position Size</div>
+                </div>
+              </div>
+              <div className="detail-stat-card highlight">
+                <div className="detail-stat-icon green">
+                  <Shield size={16} />
+                </div>
+                <div className="detail-stat-content">
+                  <div className="detail-stat-value green">${payout.toLocaleString()}</div>
+                  <div className="detail-stat-label">Max Payout</div>
+                </div>
+              </div>
             </div>
-          </div>
-          <p className="position-reasoning-text">
-            {position.reasoning}
-          </p>
-          {position.url && (
-            <a
-              href={position.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="contract-link"
-              onClick={(e) => e.stopPropagation()}
-            >
-              View on {position.contract_source || 'Polymarket'} <ExternalLink size={11} />
-            </a>
-          )}
-        </div>
-      )}
+
+            {/* Payout Breakdown */}
+            <div className="detail-payout-breakdown">
+              <div className="detail-section-label">Payout Breakdown</div>
+              <div className="payout-visual">
+                <div className="payout-bar-wrap">
+                  <div className="payout-bar-cost" style={{ width: `${totalCost > 0 ? Math.min((allocation / payout) * 100, 100) : 50}%` }}>
+                    <span>Cost: ${allocation.toLocaleString()}</span>
+                  </div>
+                  <div className="payout-bar-profit">
+                    <span>Profit: ${profit.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Contract Details */}
+            <div className="detail-info-grid">
+              <div className="detail-info-item">
+                <span className="detail-info-label">Source</span>
+                <span className="detail-info-value">
+                  {position.contract_source || 'Polymarket'}
+                  {position.ticker && <span className="detail-ticker">{position.ticker}</span>}
+                </span>
+              </div>
+              <div className="detail-info-item">
+                <span className="detail-info-label">Side</span>
+                <span className="detail-info-value">
+                  <span className={`position-side-badge ${isYes ? 'yes' : 'no'}`}>
+                    {side}
+                  </span>
+                </span>
+              </div>
+              {position.end_date_formatted && (
+                <div className="detail-info-item">
+                  <span className="detail-info-label">Expires</span>
+                  <span className="detail-info-value">
+                    <Clock size={13} style={{ marginRight: 4, opacity: 0.5 }} />
+                    {position.end_date_formatted}
+                  </span>
+                </div>
+              )}
+              {position.correlation && (
+                <div className="detail-info-item">
+                  <span className="detail-info-label">Correlation</span>
+                  <span className="detail-info-value">
+                    <span className={`correlation-badge ${position.correlation.toLowerCase()}`}>
+                      {position.correlation}
+                    </span>
+                  </span>
+                </div>
+              )}
+              <div className="detail-info-item">
+                <span className="detail-info-label">Portfolio Weight</span>
+                <span className="detail-info-value">{portfolioPct}%</span>
+              </div>
+              <div className="detail-info-item">
+                <span className="detail-info-label">Hedges</span>
+                <span className="detail-info-value">{position.risk?.event || '—'}</span>
+              </div>
+            </div>
+
+            {/* Real Price History */}
+            <div className="detail-chart-section">
+              <div className="detail-section-label">Price History</div>
+              <PriceChart
+                question={position.contract_title}
+                color={isYes ? 'var(--green)' : 'var(--red)'}
+                width={560}
+                height={120}
+              />
+            </div>
+
+            {/* Reasoning */}
+            <div className="detail-reasoning">
+              <div className="detail-section-label">AI Reasoning</div>
+              <p className="position-reasoning-text">
+                {position.reasoning}
+              </p>
+            </div>
+
+            {position.url && (
+              <a
+                href={position.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="contract-link"
+                onClick={(e) => e.stopPropagation()}
+              >
+                View on {position.contract_source || 'Polymarket'} <ExternalLink size={12} />
+              </a>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Expand indicator */}
+      <div className="position-card-expand-hint">
+        {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </div>
     </motion.div>
   )
 }
@@ -131,8 +234,41 @@ function RiskCard({ risk }) {
   )
 }
 
-export default function Results({ data, onReset }) {
+function buildSummaryText(data) {
+  const positions = data.positions || []
+  const totalCost = data.total_cost || 0
+  const maxPayout = data.total_max_profit || data.max_payout || 0
+  const ratio = totalCost > 0 ? (maxPayout / totalCost).toFixed(1) : '—'
+
+  let text = `TRYGG HEDGE PORTFOLIO\n`
+  text += `Coverage Ratio: ${ratio}x\n`
+  text += `Premium: $${totalCost.toLocaleString()} → Max Protection: $${maxPayout.toLocaleString()}\n\n`
+  text += `POSITIONS (${positions.length}):\n`
+
+  for (const pos of positions) {
+    const price = pos.current_price ?? pos.price
+    const side = pos.side?.toUpperCase()
+    const pct = Math.round(price * 100)
+    const alloc = pos.allocation || pos.cost || 0
+    const ret = price > 0 ? ((1 / price) - 1).toFixed(1) : '—'
+    text += `• ${pos.contract_title}\n`
+    text += `  ${side} @ ${pct}% · $${alloc.toLocaleString()} · ${ret}x return\n`
+    if (pos.reasoning) text += `  → ${pos.reasoning}\n`
+    text += `\n`
+  }
+
+  if (data.warnings?.length) {
+    text += `WARNINGS:\n`
+    for (const w of data.warnings) text += `⚠ ${w}\n`
+  }
+
+  text += `\nGenerated by Trygg — AI-powered prediction market hedging`
+  return text
+}
+
+export default function Results({ data, onReset, relatedMarkets }) {
   const [showRisks, setShowRisks] = useState(false)
+  const [copied, setCopied] = useState(false)
   const positions = data.positions || []
   const totalCost = data.total_cost || 0
   const risks = data.risks || []
@@ -145,6 +281,14 @@ export default function Results({ data, onReset }) {
     ? (hasNotes ? `View ${risks.length} risks & notes` : `View ${risks.length} identified risks`)
     : (hasNotes ? `View ${warnings.length + unhedgeable.length} notes` : null)
 
+  const handleCopy = async (e) => {
+    e.stopPropagation()
+    const text = buildSummaryText(data)
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
     <motion.div
       className="results"
@@ -152,6 +296,23 @@ export default function Results({ data, onReset }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
+      {/* Analysis Complete Banner */}
+      <motion.div
+        className="results-complete-banner"
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
+        <div className="results-complete-left">
+          <Check size={16} />
+          <span>Analysis complete</span>
+        </div>
+        <button className="results-copy-btn" onClick={handleCopy}>
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? 'Copied' : 'Copy summary'}
+        </button>
+      </motion.div>
+
       <PortfolioSummary data={data} />
 
       {positions.length > 0 && (
@@ -161,7 +322,13 @@ export default function Results({ data, onReset }) {
           </div>
           <div className="position-cards">
             {positions.map((pos, i) => (
-              <PositionCard key={i} position={pos} index={i} totalCost={totalCost} />
+              <PositionCard
+                key={i}
+                position={pos}
+                index={i}
+                totalCost={totalCost}
+                featured={i === 0}
+              />
             ))}
           </div>
         </section>
@@ -204,6 +371,9 @@ export default function Results({ data, onReset }) {
           )}
         </section>
       )}
+
+      {/* Related Markets the agent considered */}
+      <TrendingMarkets markets={relatedMarkets} />
 
       <div className="reset-bar">
         <button className="reset-btn" onClick={onReset}>

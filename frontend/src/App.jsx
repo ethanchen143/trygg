@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
-import { AnimatePresence } from 'framer-motion'
+import { useState, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import Header from './components/Header'
 import Hero from './components/Hero'
 import IntakeForm from './components/IntakeForm'
@@ -18,20 +18,19 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [streamEvents, setStreamEvents] = useState([])
   const [results, setResults] = useState(null)
-  // Chat history: [{role: 'user', content: string}, {role: 'assistant', content: string}]
   const [chatHistory, setChatHistory] = useState([])
   const [awaitingReply, setAwaitingReply] = useState(false)
+  const [relatedMarkets, setRelatedMarkets] = useState([])
 
   const runAnalysis = useCallback(async (query) => {
     if (!query.trim()) return
 
-    // Add user message to chat history
     setChatHistory(prev => [...prev, { role: 'user', content: query }])
-
     setLoading(true)
     setStreamEvents([])
     setResults(null)
     setAwaitingReply(false)
+    setRelatedMarkets([])
 
     try {
       const response = await fetch(`${API_URL}/prediction-markets/stream`, {
@@ -65,8 +64,9 @@ function App() {
 
             if (event.type === 'recommendations') {
               setResults(transformResponse(event.data))
+            } else if (event.type === 'related_markets') {
+              setRelatedMarkets(event.data || [])
             } else if (event.type === 'conversation') {
-              // Add agent reply to chat history, allow user to respond
               setChatHistory(prev => [...prev, { role: 'assistant', content: event.message }])
               setAwaitingReply(true)
             } else if (event.type === 'error') {
@@ -104,6 +104,7 @@ function App() {
     setBusinessDescription('')
     setStreamEvents([])
     setAwaitingReply(false)
+    setRelatedMarkets([])
   }, [])
 
   const hasStarted = chatHistory.length > 0 || loading || results
@@ -111,37 +112,50 @@ function App() {
   return (
     <div className="app">
       <Header />
-      <main className="main">
-        {!hasStarted && (
-          <>
-            <Hero />
-            <IntakeForm
-              businessDescription={businessDescription}
-              onDescriptionChange={setBusinessDescription}
-              onAnalyze={handleAnalyze}
-              loading={loading}
-            />
-          </>
-        )}
+      <main className={`main${hasStarted ? ' main--wide' : ''}`}>
+        <AnimatePresence mode="wait">
+          {!hasStarted && (
+            <motion.div
+              key="landing"
+              initial={{ opacity: 1 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Hero />
+              <IntakeForm
+                businessDescription={businessDescription}
+                onDescriptionChange={setBusinessDescription}
+                onAnalyze={handleAnalyze}
+                loading={loading}
+              />
+            </motion.div>
+          )}
 
-        {hasStarted && (
-          <>
-            <ChatThread
-              history={chatHistory}
-              awaitingReply={awaitingReply}
-              onReply={handleReply}
-              loading={loading}
-            />
+          {hasStarted && (
+            <motion.div
+              key="analysis"
+              className="analysis-view"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+            >
+              <ChatThread
+                history={chatHistory}
+                awaitingReply={awaitingReply}
+                onReply={handleReply}
+                loading={loading}
+              />
 
-            <AnimatePresence mode="wait">
-              {loading && <LoadingState events={streamEvents} key="loading" />}
-            </AnimatePresence>
+              <AnimatePresence mode="wait">
+                {loading && <LoadingState events={streamEvents} key="loading" />}
+              </AnimatePresence>
 
-            {results && !loading && (
-              <Results data={results} onReset={handleReset} />
-            )}
-          </>
-        )}
+              {results && !loading && (
+                <Results data={results} onReset={handleReset} relatedMarkets={relatedMarkets} />
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
       <Footer />
     </div>

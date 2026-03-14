@@ -14,11 +14,16 @@ export default function PortfolioSummary({ data }) {
   return (
     <motion.div
       className="verdict-hero"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
     >
-      <div className="verdict-hero-main">
+      <div className="verdict-hero-ratio-spotlight">
+        <span className="verdict-hero-ratio-value">{coverageRatio}x</span>
+        <span className="verdict-hero-ratio-label">Coverage Ratio</span>
+      </div>
+
+      <div className="verdict-hero-body">
         <div className="verdict-hero-left">
           <div className="verdict-hero-headline">
             {riskCount > 0
@@ -46,11 +51,7 @@ export default function PortfolioSummary({ data }) {
           </div>
         </div>
         <div className="verdict-hero-right">
-          <div className="verdict-hero-ratio">
-            <span className="verdict-hero-ratio-value">{coverageRatio}x</span>
-            <span className="verdict-hero-ratio-label">Coverage</span>
-          </div>
-          <DonutChart positions={positions} size={48} />
+          <DonutChart positions={positions} size={80} />
         </div>
       </div>
     </motion.div>

@@ -1,35 +1,38 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 :root {
-  --bg-0: #080b14;
-  --bg-1: #0c1019;
-  --bg-2: #111620;
-  --bg-3: #161c28;
-  --bg-4: #1c2333;
-  --border: #1e2536;
-  --border-hover: #2a3348;
-  --text-1: #e4e7f0;
-  --text-2: #8b92a8;
-  --text-3: #545c72;
-  --text-4: #343b4f;
-  --gold: #c9a84c;
-  --gold-soft: rgba(201, 168, 76, 0.08);
-  --gold-border: rgba(201, 168, 76, 0.18);
-  --green: #3d9970;
-  --green-soft: rgba(61, 153, 112, 0.08);
-  --green-border: rgba(61, 153, 112, 0.18);
-  --red: #c0504d;
-  --red-soft: rgba(192, 80, 77, 0.08);
-  --blue: #5b8fd4;
-  --blue-soft: rgba(91, 143, 212, 0.08);
-  --amber: #d4a03a;
-  --amber-soft: rgba(212, 160, 58, 0.06);
-  --amber-border: rgba(212, 160, 58, 0.14);
+  --bg-0: #ffffff;
+  --bg-1: #f8f8f7;
+  --bg-2: #f0efed;
+  --bg-3: #e8e6e3;
+  --bg-4: #dddbd7;
+  --border: #e0ddd8;
+  --border-hover: #c5c1ba;
+  --text-1: #1a1a1a;
+  --text-2: #4a4a4a;
+  --text-3: #7a7a7a;
+  --text-4: #a0a0a0;
+  --gold: #a8872e;
+  --gold-soft: rgba(168, 135, 46, 0.07);
+  --gold-border: rgba(168, 135, 46, 0.2);
+  --green: #16a34a;
+  --green-soft: rgba(22, 163, 74, 0.07);
+  --green-border: rgba(22, 163, 74, 0.18);
+  --red: #dc2626;
+  --red-soft: rgba(220, 38, 38, 0.06);
+  --blue: #2563eb;
+  --blue-soft: rgba(37, 99, 235, 0.06);
+  --amber: #ca8a04;
+  --amber-soft: rgba(202, 138, 4, 0.06);
+  --amber-border: rgba(202, 138, 4, 0.14);
   --font-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
   --font-body: 'DM Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', 'Menlo', monospace;
-  --radius: 3px;
-  --radius-lg: 4px;
+  --radius: 4px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --glow-gold: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --glow-green: 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -45,7 +48,7 @@ body {
 }
 
 #root { min-height: 100vh; }
-::selection { background: rgba(201, 168, 76, 0.2); }
+::selection { background: rgba(168, 135, 46, 0.18); }
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }

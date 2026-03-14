@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion'
-import { FileText, Search, Shield } from 'lucide-react'
-import Ticker from './Ticker'
+import LiveTicker from './LiveTicker'
 
 export default function Hero() {
   return (
@@ -9,32 +8,22 @@ export default function Hero() {
         className="hero"
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: 'easeOut' }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
       >
-        <h1>
-          Hedge your <span className="accent">uninsurable</span> risks
-        </h1>
+        <h1>Hedge risks <span className="accent">no one else</span> will insure</h1>
+        <div className="hero-accent-line" />
         <p className="hero-sub">
           AI-powered protection using prediction markets.
         </p>
-        <div className="how-it-works">
-          <div className="how-step">
-            <FileText size={16} className="how-icon" />
-            <span>Describe your risk</span>
-          </div>
-          <span className="how-arrow" />
-          <div className="how-step">
-            <Search size={16} className="how-icon" />
-            <span>AI scans markets</span>
-          </div>
-          <span className="how-arrow" />
-          <div className="how-step">
-            <Shield size={16} className="how-icon" />
-            <span>Get your hedge portfolio</span>
-          </div>
+        <div className="hero-steps">
+          <span>Describe</span>
+          <span className="hero-steps-dot" />
+          <span>Analyze</span>
+          <span className="hero-steps-dot" />
+          <span>Hedge</span>
         </div>
       </motion.section>
-      <Ticker />
+      <LiveTicker />
     </>
   )
 }

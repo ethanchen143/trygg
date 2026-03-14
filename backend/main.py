@@ -13,6 +13,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 from openai import OpenAI
 from pydantic import BaseModel
 
+import httpx
+
 import tools
 from prompts import SYSTEM_PROMPT
 
@@ -159,6 +161,9 @@ async def run_agent_stream(user_query: str):
         {"role": "user", "content": user_query},
     ]
 
+    # Accumulate all contracts the agent searched through
+    all_searched_contracts = []
+
     msg = None
     for turn in range(15):
         yield sse({"type": "status", "message": f"Thinking... (turn {turn + 1})"})
@@ -202,6 +207,20 @@ async def run_agent_stream(user_query: str):
             result_str = json.dumps(result) if not isinstance(result, str) else result
             logger.info(f"  TOOL RESULT ({fn_name}): {len(result_str)} chars")
 
+            # Capture searched contracts for "related markets"
+            if fn_name in ("search_polymarket", "search_kalshi") and isinstance(result, list):
+                for contract in result:
+                    all_searched_contracts.append({
+                        "title": contract.get("title", ""),
+                        "source": contract.get("source", "polymarket"),
+                        "yes_price": contract.get("yes_price"),
+                        "no_price": contract.get("no_price"),
+                        "volume": contract.get("volume"),
+                        "end_date": contract.get("end_date"),
+                        "url": contract.get("url", ""),
+                        "ticker": contract.get("ticker"),
+                    })
+
             summary = _summarize_tool_result(fn_name, result)
             yield sse({
                 "type": "tool_result",
@@ -227,6 +246,25 @@ async def run_agent_stream(user_query: str):
         # Serialize through pydantic for validation
         validated = [MarketRecommendation(**r).model_dump() for r in recommendations]
         yield sse({"type": "recommendations", "data": validated})
+
+        # Emit related markets (searched but not selected)
+        selected_titles = {r.get("title", "").lower() for r in recommendations}
+        seen = set()
+        related = []
+        for c in all_searched_contracts:
+            title = c.get("title", "")
+            title_lower = title.lower()
+            if title_lower in selected_titles or title_lower in seen or not title:
+                continue
+            if c.get("yes_price") is None:
+                continue
+            seen.add(title_lower)
+            related.append(c)
+        # Sort by volume descending
+        related.sort(key=lambda x: float(x.get("volume") or 0), reverse=True)
+        if related:
+            yield sse({"type": "related_markets", "data": related[:20]})
+
     except Exception:
         # Agent responded conversationally (clarifying question, etc.)
         yield sse({"type": "conversation", "message": msg.content})
@@ -234,6 +272,140 @@ async def run_agent_stream(user_query: str):
 
 class QueryRequest(BaseModel):
     query: str
+
+
+# ── Live Market Data Proxy Endpoints ──
+# These proxy Polymarket/Kalshi APIs so the frontend avoids CORS issues
+
+@app.get("/api/markets/trending")
+async def trending_markets():
+    """Return top active Polymarket markets sorted by volume for the trending panel."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                "https://gamma-api.polymarket.com/markets",
+                params={"active": "true", "closed": "false", "limit": 50, "order": "volume", "ascending": "false"},
+            )
+            resp.raise_for_status()
+            markets = resp.json()
+
+        results = []
+        for m in markets:
+            prices = m.get("outcomePrices", "[]")
+            if isinstance(prices, str):
+                try:
+                    prices = json.loads(prices)
+                except Exception:
+                    prices = []
+            yes_price = float(prices[0]) if prices else None
+            if yes_price is None:
+                continue
+            results.append({
+                "id": m.get("id"),
+                "question": m.get("question", ""),
+                "yes_price": yes_price,
+                "volume": float(m.get("volume", 0) or 0),
+                "slug": m.get("slug", ""),
+                "end_date": m.get("endDate"),
+                "image": m.get("image"),
+            })
+
+        return results[:30]
+    except Exception as e:
+        return []
+
+
+@app.get("/api/markets/ticker-feed")
+async def ticker_feed():
+    """Return live market data for the scrolling ticker bar."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                "https://gamma-api.polymarket.com/markets",
+                params={"active": "true", "closed": "false", "limit": 40, "order": "volume", "ascending": "false"},
+            )
+            resp.raise_for_status()
+            markets = resp.json()
+
+        results = []
+        for m in markets:
+            prices = m.get("outcomePrices", "[]")
+            if isinstance(prices, str):
+                try:
+                    prices = json.loads(prices)
+                except Exception:
+                    prices = []
+            yes_price = float(prices[0]) if prices else None
+            if yes_price is None:
+                continue
+            question = m.get("question", "")
+            if len(question) > 60:
+                question = question[:57] + "..."
+            results.append({
+                "question": question,
+                "yes_price": yes_price,
+                "volume": float(m.get("volume", 0) or 0),
+            })
+
+        return results[:25]
+    except Exception:
+        return []
+
+
+@app.get("/api/markets/price-history")
+async def price_history(question: str):
+    """Fetch real price history for a market by searching its question text."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # Step 1: Find the market on Gamma API by question text
+            resp = await client.get(
+                "https://gamma-api.polymarket.com/markets",
+                params={"active": "true", "closed": "false", "limit": 5},
+            )
+            resp.raise_for_status()
+
+            # Search through all cached markets for a title match
+            all_events = await tools._fetch_polymarket_all()
+            best_match = None
+            best_score = 0
+            clob_token_id = None
+
+            for event in all_events:
+                for market in event.get("markets", [event]):
+                    q = market.get("question", "")
+                    score = tools._keyword_match(q, question)
+                    if score > best_score:
+                        best_score = score
+                        best_match = market
+                        tokens = market.get("clobTokenIds", "[]")
+                        if isinstance(tokens, str):
+                            try:
+                                tokens = json.loads(tokens)
+                            except Exception:
+                                tokens = []
+                        clob_token_id = tokens[0] if tokens else None
+
+            if not clob_token_id or best_score < 0.3:
+                return []
+
+            # Step 2: Fetch price history from CLOB API
+            resp = await client.get(
+                "https://clob.polymarket.com/prices-history",
+                params={
+                    "market": clob_token_id,
+                    "interval": "max",
+                    "fidelity": 60,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            # data.history is array of {t: timestamp, p: price}
+            history = data.get("history", [])
+            return [{"t": point.get("t", 0), "p": float(point.get("p", 0))} for point in history]
+    except Exception as e:
+        logger.error(f"Price history error: {e}")
+        return []
 
 
 class MarketRecommendation(BaseModel):
