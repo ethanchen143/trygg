@@ -1,14 +1,23 @@
+import { useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { Search, Globe, CheckCircle2, Brain } from 'lucide-react'
 
-const STEPS = [
-  'Analyzing your risk exposure',
-  'Searching Polymarket and Kalshi',
-  'Evaluating contract correlations',
-  'Building hedge portfolio',
-  'Finalizing protection plan',
-]
+function EventIcon({ event }) {
+  if (event.type === 'tool_call') {
+    if (event.tool === 'web_search') return <Globe size={14} />
+    return <Search size={14} />
+  }
+  if (event.type === 'tool_result') return <CheckCircle2 size={14} />
+  return <Brain size={14} />
+}
 
-export default function LoadingState({ step }) {
+export default function LoadingState({ events }) {
+  const bottomRef = useRef(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [events])
+
   return (
     <motion.div
       className="loading-container"
@@ -20,29 +29,32 @@ export default function LoadingState({ step }) {
       <div className="loading-pulse">
         <div className="loading-center-dot" />
       </div>
-      <div className="loading-steps">
-        {STEPS.map((text, i) => (
-          <div
-            key={i}
-            className={`loading-step ${
-              i < step ? 'done' : i === step ? 'active' : ''
-            }`}
-          >
-            <span className="step-indicator">
-              <svg className="step-check" width="8" height="8" viewBox="0 0 8 8">
-                <path
-                  d="M1.5 4L3.5 6L6.5 2"
-                  stroke={i < step ? '#343b4f' : '#080b14'}
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-              </svg>
-            </span>
-            {text}
+
+      <div className="loading-timeline">
+        {events.length === 0 && (
+          <div className="timeline-event timeline-status">
+            <Brain size={14} />
+            <span className="timeline-text">Starting analysis...</span>
           </div>
+        )}
+        {events.map((event, i) => (
+          <motion.div
+            key={i}
+            className={`timeline-event timeline-${event.type}`}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <EventIcon event={event} />
+            <span className="timeline-text">
+              {event.message || event.summary}
+            </span>
+            {event.type === 'tool_call' && (
+              <span className="timeline-spinner" />
+            )}
+          </motion.div>
         ))}
+        <div ref={bottomRef} />
       </div>
     </motion.div>
   )
