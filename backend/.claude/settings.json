@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash (*)",
+      "Read(//Users/jiayangchen/Desktop/PROJECTS/**)",
+      "Bash(find /Users/jiayangchen/Desktop/PROJECTS/backend -type f \\\\\\(-name *.py -o -name *.js -o -name *.jsx -o -name *.json -o -name *.txt -o -name *.yml \\\\\\))",
+      "Bash(ls -la /Users/jiayangchen/Desktop/PROJECTS/backend/*.py /Users/jiayangchen/Desktop/PROJECTS/backend/requirements.txt)",
+      "Bash(ls /Users/jiayangchen/Desktop/PROJECTS/backend/*.py)",
+      "Bash(pip install:*)",
+      "Bash(curl -X POST http://localhost:8000/prediction-markets -H \"Content-Type: application/json\" -d '{\"\"query\"\": \"\"I run a small electronics import business, $3M revenue, 80% from China. Terrified of tariffs going to 60%.\"\"}')",
+      "Bash(kill %1)",
+      "Bash(lsof -ti:8000)",
+      "Bash(xargs kill:*)",
+      "Bash(curl -s -X POST http://localhost:8000/prediction-markets -H \"Content-Type: application/json\" -d '{\"\"query\"\": \"\"I run a small electronics import business, $3M revenue, 80% from China. Terrified of tariffs going to 60%.\"\"}')",
+      "Read(//private/tmp/**)"
+    ]
+  }
+}
