@@ -16,6 +16,7 @@ from pydantic import BaseModel
 import httpx
 
 import tools
+import quant
 from prompts import SYSTEM_PROMPT
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -63,13 +64,45 @@ TOOLS_SCHEMA = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "enrich_company",
+            "description": "Look up a company by name or domain to get detailed intelligence: industry, size, revenue, funding, competitors, HQ location, and recent news. Use this to better understand the user's business and calibrate risk exposure.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company_name": {"type": "string", "description": "Company name to look up"},
+                    "company_domain": {"type": "string", "description": "Company website domain (e.g. 'acme.com')"},
+                },
+            },
+        },
+    },
 ]
 
 TOOL_FNS = {
     "search_polymarket": tools.search_polymarket,
     "search_kalshi": tools.search_kalshi,
     "web_search": tools.web_search,
+    "enrich_company": tools.enrich_company,
 }
+
+
+def _msg_to_dict(msg) -> dict:
+    """Convert an OpenAI message object to a plain dict for re-serialization."""
+    d = {"role": msg.role}
+    if msg.content:
+        d["content"] = msg.content
+    if msg.tool_calls:
+        d["tool_calls"] = [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+            }
+            for tc in msg.tool_calls
+        ]
+    return d
 
 
 def _parse_json(text: str) -> list[dict]:
@@ -102,7 +135,7 @@ async def run_agent(user_query: str) -> list[dict]:
                      f"content={'YES' if msg.content else 'None'} ({len(msg.content) if msg.content else 0} chars), "
                      f"tool_calls={len(msg.tool_calls) if msg.tool_calls else 0}, "
                      f"refusal={msg.refusal if hasattr(msg, 'refusal') else 'N/A'}")
-        messages.append(msg)
+        messages.append(_msg_to_dict(msg))
 
         if not msg.tool_calls:
             logger.info(f"=== TURN {turn + 1} === No tool calls — agent finished.")
@@ -127,7 +160,9 @@ async def run_agent(user_query: str) -> list[dict]:
     if msg is None or not msg.content:
         raise ValueError("Agent did not produce a final response")
 
-    return _parse_json(msg.content)
+    candidates = _parse_json(msg.content)
+    result = quant.optimize_portfolio(candidates)
+    return result
 
 
 def _summarize_tool_result(tool_name: str, result) -> str:
@@ -138,6 +173,12 @@ def _summarize_tool_result(tool_name: str, result) -> str:
     if tool_name == "web_search":
         lines = result.count('\n') + 1 if isinstance(result, str) and result else 0
         return f"Found {lines} relevant results"
+    if tool_name == "enrich_company":
+        if isinstance(result, dict) and result.get("company_name"):
+            name = result["company_name"]
+            industry = ", ".join(result.get("linkedin_industries", [])[:2]) or "Unknown industry"
+            return f"Enriched {name} — {industry}"
+        return "Company lookup returned no data"
     return "Done"
 
 
@@ -145,6 +186,7 @@ TOOL_DESCRIPTIONS = {
     "search_polymarket": "Searching Polymarket",
     "search_kalshi": "Searching Kalshi",
     "web_search": "Researching",
+    "enrich_company": "Looking up company intelligence",
 }
 
 
@@ -153,6 +195,10 @@ async def run_agent_stream(user_query: str):
 
     def sse(event: dict) -> str:
         return f"data: {json.dumps(event)}\n\n"
+
+    def keepalive() -> str:
+        """SSE comment to keep connection alive through proxies."""
+        return ": keepalive\n\n"
 
     yield sse({"type": "status", "message": "Analyzing your risk exposure..."})
 
@@ -167,6 +213,7 @@ async def run_agent_stream(user_query: str):
     msg = None
     for turn in range(15):
         yield sse({"type": "status", "message": f"Thinking... (turn {turn + 1})"})
+        yield keepalive()
 
         logger.info(f"=== TURN {turn + 1} === Calling LLM...")
         resp = client.chat.completions.create(
@@ -179,7 +226,7 @@ async def run_agent_stream(user_query: str):
                      f"content={'YES' if msg.content else 'None'} ({len(msg.content) if msg.content else 0} chars), "
                      f"tool_calls={len(msg.tool_calls) if msg.tool_calls else 0}, "
                      f"refusal={msg.refusal if hasattr(msg, 'refusal') else 'N/A'}")
-        messages.append(msg)
+        messages.append(_msg_to_dict(msg))
 
         if not msg.tool_calls:
             logger.info(f"=== TURN {turn + 1} === No tool calls — agent finished.")
@@ -242,13 +289,18 @@ async def run_agent_stream(user_query: str):
 
     try:
         recommendations = _parse_json(msg.content)
-        yield sse({"type": "status", "message": "Finalizing your protection plan..."})
-        # Serialize through pydantic for validation
-        validated = [MarketRecommendation(**r).model_dump() for r in recommendations]
-        yield sse({"type": "recommendations", "data": validated})
+        yield sse({"type": "status", "message": "Optimizing portfolio allocation..."})
+
+        # Run quant engine on LLM candidates
+        portfolio = quant.optimize_portfolio(recommendations)
+
+        yield sse({"type": "status", "message": "Running Monte Carlo simulation..."})
+        yield sse({"type": "recommendations", "data": portfolio})
 
         # Emit related markets (searched but not selected)
+        # Rank by similarity to selected contracts, not just volume
         selected_titles = {r.get("title", "").lower() for r in recommendations}
+        selected_text = " ".join(r.get("title", "") + " " + r.get("reasoning", "") for r in recommendations)
         seen = set()
         related = []
         for c in all_searched_contracts:
@@ -259,9 +311,16 @@ async def run_agent_stream(user_query: str):
             if c.get("yes_price") is None:
                 continue
             seen.add(title_lower)
+            # Score by relevance to selected contracts + volume
+            relevance = tools._keyword_match(title, selected_text)
+            volume_score = min(float(c.get("volume") or 0) / 1_000_000, 1.0)
+            c["_score"] = relevance * 0.7 + volume_score * 0.3
             related.append(c)
-        # Sort by volume descending
-        related.sort(key=lambda x: float(x.get("volume") or 0), reverse=True)
+        # Sort by relevance score descending
+        related.sort(key=lambda x: x.get("_score", 0), reverse=True)
+        # Clean up internal score before sending
+        for c in related:
+            c.pop("_score", None)
         if related:
             yield sse({"type": "related_markets", "data": related[:20]})
 

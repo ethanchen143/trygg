@@ -7,6 +7,8 @@ services:
     envVars:
       - key: OPENAI_API_KEY
         sync: false
+      - key: CRUSTDATA_API_KEY
+        sync: false
       - key: PYTHON_VERSION
         value: "3.11"
       - key: NODE_VERSION
