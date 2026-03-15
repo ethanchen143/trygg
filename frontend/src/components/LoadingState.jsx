@@ -222,19 +222,22 @@ function FeedEvent({ event, index }) {
   )
 }
 
-export default function LoadingState({ events }) {
+export default function LoadingState({ events, loading = true }) {
   const bottomRef = useRef(null)
   const [elapsed, setElapsed] = useState(0)
   const phase = useMemo(() => inferPhase(events), [events])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [events])
+    if (loading) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [events, loading])
 
   useEffect(() => {
+    if (!loading) return
     const interval = setInterval(() => setElapsed(e => e + 1), 1000)
     return () => clearInterval(interval)
-  }, [])
+  }, [loading])
 
   return (
     <motion.div
@@ -244,43 +247,47 @@ export default function LoadingState({ events }) {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3 }}
     >
-      {/* Header */}
-      <div className="loading-hero">
-        <div className="loading-hero-icon">
-          <Shield size={20} />
-          <div className="loading-hero-pulse" />
-        </div>
-        <div className="loading-hero-text">
-          <span className="loading-title">Analyzing risk landscape</span>
-          <span className="loading-elapsed">{formatElapsed(elapsed)}</span>
-        </div>
-      </div>
-
-      {/* Progress Steps */}
-      <div className="loading-steps">
-        {PHASES.map((p, i) => {
-          const Icon = p.icon
-          const state = i < phase ? 'done' : i === phase ? 'active' : 'pending'
-          return (
-            <div key={p.key} className={`loading-step loading-step--${state}`}>
-              <div className="loading-step-indicator">
-                {state === 'done' ? (
-                  <CheckCircle2 size={18} />
-                ) : (
-                  <div className={`loading-step-number ${state === 'active' ? 'loading-step-number--active' : ''}`}>
-                    {i + 1}
-                  </div>
-                )}
-              </div>
-              <div className="loading-step-content">
-                <span className="loading-step-label">{p.label}</span>
-                <span className="loading-step-desc">{p.desc}</span>
-              </div>
-              {state === 'active' && <div className="loading-step-spinner" />}
+      {loading && (
+        <>
+          {/* Header */}
+          <div className="loading-hero">
+            <div className="loading-hero-icon">
+              <Shield size={20} />
+              <div className="loading-hero-pulse" />
             </div>
-          )
-        })}
-      </div>
+            <div className="loading-hero-text">
+              <span className="loading-title">Analyzing risk landscape</span>
+              <span className="loading-elapsed">{formatElapsed(elapsed)}</span>
+            </div>
+          </div>
+
+          {/* Progress Steps */}
+          <div className="loading-steps">
+            {PHASES.map((p, i) => {
+              const Icon = p.icon
+              const state = i < phase ? 'done' : i === phase ? 'active' : 'pending'
+              return (
+                <div key={p.key} className={`loading-step loading-step--${state}`}>
+                  <div className="loading-step-indicator">
+                    {state === 'done' ? (
+                      <CheckCircle2 size={18} />
+                    ) : (
+                      <div className={`loading-step-number ${state === 'active' ? 'loading-step-number--active' : ''}`}>
+                        {i + 1}
+                      </div>
+                    )}
+                  </div>
+                  <div className="loading-step-content">
+                    <span className="loading-step-label">{p.label}</span>
+                    <span className="loading-step-desc">{p.desc}</span>
+                  </div>
+                  {state === 'active' && <div className="loading-step-spinner" />}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
 
       {/* Activity Feed */}
       <div className="loading-feed">

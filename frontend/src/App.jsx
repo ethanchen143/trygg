@@ -194,9 +194,9 @@ function App() {
                 loading={loading}
               />
 
-              <AnimatePresence mode="wait">
-                {loading && <LoadingState events={streamEvents} key="loading" />}
-              </AnimatePresence>
+              {(loading || streamEvents.length > 0) && (
+                <LoadingState events={streamEvents} loading={loading} />
+              )}
 
               {results && !loading && (
                 <Results
