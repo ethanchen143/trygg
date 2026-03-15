@@ -17,6 +17,7 @@ import httpx
 
 import tools
 import quant
+from quant import DEFAULT_BUDGET
 from prompts import SYSTEM_PROMPT
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -116,7 +117,7 @@ def _parse_json(text: str) -> list[dict]:
         raise
 
 
-async def run_agent(user_query: str) -> list[dict]:
+async def run_agent(user_query: str, budget: float = DEFAULT_BUDGET) -> list[dict]:
     messages = [
         {"role": "developer", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_query},
@@ -161,7 +162,7 @@ async def run_agent(user_query: str) -> list[dict]:
         raise ValueError("Agent did not produce a final response")
 
     candidates = _parse_json(msg.content)
-    result = quant.optimize_portfolio(candidates)
+    result = quant.optimize_portfolio(candidates, budget=budget)
     return result
 
 
@@ -190,7 +191,7 @@ TOOL_DESCRIPTIONS = {
 }
 
 
-async def run_agent_stream(user_query: str):
+async def run_agent_stream(user_query: str, budget: float = DEFAULT_BUDGET):
     """Async generator yielding SSE events as the agent works."""
 
     def sse(event: dict) -> str:
@@ -269,12 +270,31 @@ async def run_agent_stream(user_query: str):
                     })
 
             summary = _summarize_tool_result(fn_name, result)
-            yield sse({
+            tool_result_event = {
                 "type": "tool_result",
                 "tool": fn_name,
                 "turn": turn + 1,
                 "summary": summary,
-            })
+            }
+            # Attach contract details for market search results
+            if fn_name in ("search_polymarket", "search_kalshi") and isinstance(result, list):
+                tool_result_event["contracts"] = [
+                    {
+                        "title": c.get("title", ""),
+                        "source": c.get("source", "Polymarket" if "polymarket" in fn_name else "Kalshi"),
+                        "yes_price": c.get("yes_price"),
+                        "no_price": c.get("no_price"),
+                        "volume": c.get("volume"),
+                        "end_date": c.get("end_date"),
+                        "url": c.get("url", ""),
+                    }
+                    for c in result if c.get("title")
+                ]
+            if fn_name == "enrich_company" and isinstance(result, dict):
+                tool_result_event["enrichment"] = result
+            if fn_name == "web_search" and isinstance(result, str) and result:
+                tool_result_event["web_results"] = result[:2000]
+            yield sse(tool_result_event)
 
             messages.append({
                 "role": "tool",
@@ -292,7 +312,7 @@ async def run_agent_stream(user_query: str):
         yield sse({"type": "status", "message": "Optimizing portfolio allocation..."})
 
         # Run quant engine on LLM candidates
-        portfolio = quant.optimize_portfolio(recommendations)
+        portfolio = quant.optimize_portfolio(recommendations, budget=budget)
 
         yield sse({"type": "status", "message": "Running Monte Carlo simulation..."})
         yield sse({"type": "recommendations", "data": portfolio})
@@ -331,6 +351,7 @@ async def run_agent_stream(user_query: str):
 
 class QueryRequest(BaseModel):
     query: str
+    budget: float = 10000
 
 
 # ── Live Market Data Proxy Endpoints ──
@@ -484,7 +505,7 @@ class MarketRecommendation(BaseModel):
 @app.post("/prediction-markets", response_model=list[MarketRecommendation])
 async def prediction_markets(req: QueryRequest):
     try:
-        return await run_agent(req.query)
+        return await run_agent(req.query, budget=req.budget)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -492,7 +513,7 @@ async def prediction_markets(req: QueryRequest):
 @app.post("/prediction-markets/stream")
 async def prediction_markets_stream(req: QueryRequest):
     return StreamingResponse(
-        run_agent_stream(req.query),
+        run_agent_stream(req.query, budget=req.budget),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

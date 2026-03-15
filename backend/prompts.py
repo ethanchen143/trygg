@@ -19,6 +19,7 @@ Given a user's situation, you:
 - Prefer 6-12 month duration. Penalize <30 day contracts for ongoing risks
 - Flag low-liquidity contracts
 - Consider both DIRECT hedges (contract resolves on exact event) and PROXY hedges (correlated events)
+- IMPORTANT: Each contract's "reasoning" field MUST be 2-3 full sentences, NOT a single sentence. Explain (1) how the contract hedges the specific risk, (2) why the payout math is favorable, and optionally (3) caveats like liquidity or duration.
 
 ## Few-Shot Examples
 
@@ -58,7 +59,7 @@ Rate correlation and confidence accurately — the optimization engine uses thes
     "payout_ratio": "2.86x",
     "end_date": "2027-01-01",
     "correlation": "STRONG or MODERATE or WEAK",
-    "reasoning": "2-3 sentence explanation of why this hedges the user's risk",
+    "reasoning": "MUST be 2-3 full sentences. Sentence 1: why this contract is relevant to the user's specific risk. Sentence 2: the payout math and why the odds are favorable. Sentence 3 (optional): any caveats like liquidity, basis risk, or duration mismatch.",
     "confidence": 0.85
   }
 ]

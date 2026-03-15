@@ -3,9 +3,13 @@ import { motion } from 'framer-motion'
 export default function IntakeForm({
   businessDescription,
   onDescriptionChange,
+  budget,
+  onBudgetChange,
   onAnalyze,
   loading,
 }) {
+  const presets = [5000, 10000, 25000, 50000]
+
   return (
     <motion.section
       className="intake-section"
@@ -21,10 +25,37 @@ export default function IntakeForm({
         onChange={(e) => onDescriptionChange(e.target.value)}
       />
 
+      <div className="field-label">Total Premium</div>
+      <div className="budget-input-row">
+        <div className="budget-input-wrap">
+          <span className="budget-input-prefix">$</span>
+          <input
+            type="number"
+            className="budget-input"
+            value={budget}
+            min={100}
+            step={1000}
+            onChange={(e) => onBudgetChange(Number(e.target.value) || 0)}
+          />
+        </div>
+        <div className="budget-presets">
+          {presets.map((val) => (
+            <button
+              key={val}
+              className={`budget-preset${budget === val ? ' budget-preset--active' : ''}`}
+              onClick={() => onBudgetChange(val)}
+            >
+              ${val >= 1000 ? `${val / 1000}k` : val}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="budget-sub">Capital at risk — allocated across your hedge portfolio</div>
+
       <button
         className="analyze-btn"
         onClick={onAnalyze}
-        disabled={!businessDescription.trim() || loading}
+        disabled={!businessDescription.trim() || loading || budget < 100}
       >
         Get Protection
       </button>

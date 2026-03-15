@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useMemo } from 'react'
-import { motion } from 'framer-motion'
-import { Search, Globe, CheckCircle2, Brain, Radar, BarChart3, Shield, Building2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Search, Globe, CheckCircle2, Brain, Radar, BarChart3, Shield, Building2, ChevronRight, ExternalLink } from 'lucide-react'
 
 function EventIcon({ event }) {
   if (event.type === 'tool_call') {
@@ -18,6 +18,18 @@ function formatElapsed(seconds) {
   return m > 0 ? `${m}m ${s}s` : `${s}s`
 }
 
+function formatVolume(v) {
+  if (!v) return '-'
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`
+  return `$${v}`
+}
+
+function formatPrice(p) {
+  if (p == null) return '-'
+  return `${Math.round(p * 100)}¢`
+}
+
 const PHASES = [
   { key: 'identify', label: 'Identifying Risks', icon: Brain, desc: 'Analyzing your business exposure' },
   { key: 'scan', label: 'Scanning Markets', icon: Radar, desc: 'Searching 6,000+ contracts' },
@@ -32,6 +44,138 @@ function inferPhase(events) {
   if (toolCalls >= 4 && hasResults) return 2
   if (toolCalls >= 1) return 1
   return 0
+}
+
+function ContractRow({ contract }) {
+  const impliedProb = contract.yes_price != null ? Math.round(contract.yes_price * 100) : null
+
+  return (
+    <a
+      className="contract-row"
+      href={contract.url || undefined}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={e => { if (!contract.url) e.preventDefault() }}
+    >
+      <div className="contract-row-main">
+        <span className="contract-row-title">{contract.title}</span>
+        <div className="contract-row-meta">
+          <span className="contract-row-source">{contract.source}</span>
+          {contract.end_date && <span className="contract-row-date">{contract.end_date}</span>}
+        </div>
+      </div>
+      <div className="contract-row-stats">
+        {impliedProb != null && (
+          <div className="contract-row-stat">
+            <span className="contract-row-stat-value">{impliedProb}%</span>
+            <span className="contract-row-stat-label">YES</span>
+          </div>
+        )}
+        {contract.no_price != null && (
+          <div className="contract-row-stat">
+            <span className="contract-row-stat-value">{Math.round(contract.no_price * 100)}%</span>
+            <span className="contract-row-stat-label">NO</span>
+          </div>
+        )}
+        <div className="contract-row-stat">
+          <span className="contract-row-stat-value">{formatVolume(contract.volume)}</span>
+          <span className="contract-row-stat-label">Vol</span>
+        </div>
+      </div>
+      {contract.url && <ExternalLink size={12} className="contract-row-link" />}
+    </a>
+  )
+}
+
+function EnrichmentDetail({ data }) {
+  if (!data) return null
+  return (
+    <div className="detail-panel-content">
+      {data.company_name && <div className="detail-kv"><span className="detail-k">Company</span><span className="detail-v">{data.company_name}</span></div>}
+      {data.linkedin_industries?.length > 0 && <div className="detail-kv"><span className="detail-k">Industry</span><span className="detail-v">{data.linkedin_industries.join(', ')}</span></div>}
+      {data.short_description && <div className="detail-kv"><span className="detail-k">Description</span><span className="detail-v">{data.short_description}</span></div>}
+      {data.employee_count && <div className="detail-kv"><span className="detail-k">Employees</span><span className="detail-v">{data.employee_count.toLocaleString()}</span></div>}
+      {data.founded_year && <div className="detail-kv"><span className="detail-k">Founded</span><span className="detail-v">{data.founded_year}</span></div>}
+      {data.headquarters && <div className="detail-kv"><span className="detail-k">HQ</span><span className="detail-v">{typeof data.headquarters === 'object' ? `${data.headquarters.city || ''}, ${data.headquarters.country || ''}` : data.headquarters}</span></div>}
+    </div>
+  )
+}
+
+function WebResultsDetail({ text }) {
+  if (!text) return null
+  return (
+    <div className="detail-panel-content detail-panel-content--web">
+      <pre className="web-results-text">{text}</pre>
+    </div>
+  )
+}
+
+function FeedEvent({ event, index }) {
+  const [expanded, setExpanded] = useState(false)
+  const hasDetails = event.type === 'tool_result' && (event.contracts?.length > 0 || event.enrichment || event.web_results)
+  const isClickable = hasDetails
+
+  return (
+    <motion.div
+      key={index}
+      className={`feed-event-wrapper`}
+      initial={{ opacity: 0, x: -6 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <div
+        className={`feed-event feed-event--${event.type}${isClickable ? ' feed-event--clickable' : ''}${expanded ? ' feed-event--expanded' : ''}`}
+        onClick={isClickable ? () => setExpanded(e => !e) : undefined}
+        role={isClickable ? 'button' : undefined}
+        tabIndex={isClickable ? 0 : undefined}
+        onKeyDown={isClickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v) } } : undefined}
+      >
+        <div className="feed-event-icon">
+          <EventIcon event={event} />
+        </div>
+        <span className="feed-event-text">
+          {event.message || event.summary}
+        </span>
+        {event.type === 'tool_call' && (
+          <div className="feed-event-spinner" />
+        )}
+        {event.type === 'tool_result' && !isClickable && (
+          <span className="feed-event-done">Done</span>
+        )}
+        {isClickable && (
+          <ChevronRight
+            size={14}
+            className={`feed-event-chevron${expanded ? ' feed-event-chevron--open' : ''}`}
+          />
+        )}
+      </div>
+
+      <AnimatePresence>
+        {expanded && hasDetails && (
+          <motion.div
+            className="detail-panel"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: 'easeInOut' }}
+          >
+            {event.contracts?.length > 0 && (
+              <div className="detail-panel-contracts">
+                <div className="detail-panel-header">
+                  <span>{event.contracts.length} contracts found</span>
+                </div>
+                {event.contracts.map((c, ci) => (
+                  <ContractRow key={ci} contract={c} />
+                ))}
+              </div>
+            )}
+            {event.enrichment && <EnrichmentDetail data={event.enrichment} />}
+            {event.web_results && <WebResultsDetail text={event.web_results} />}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
 }
 
 export default function LoadingState({ events }) {
@@ -108,26 +252,7 @@ export default function LoadingState({ events }) {
             </div>
           )}
           {events.map((event, i) => (
-            <motion.div
-              key={i}
-              className={`feed-event feed-event--${event.type}`}
-              initial={{ opacity: 0, x: -6 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <div className="feed-event-icon">
-                <EventIcon event={event} />
-              </div>
-              <span className="feed-event-text">
-                {event.message || event.summary}
-              </span>
-              {event.type === 'tool_call' && (
-                <div className="feed-event-spinner" />
-              )}
-              {event.type === 'tool_result' && (
-                <span className="feed-event-done">Done</span>
-              )}
-            </motion.div>
+            <FeedEvent key={i} event={event} index={i} />
           ))}
           <div ref={bottomRef} />
         </div>

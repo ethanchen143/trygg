@@ -15,6 +15,7 @@ const API_URL = import.meta.env.VITE_API_URL || ''
 
 function App() {
   const [businessDescription, setBusinessDescription] = useState('')
+  const [budget, setBudget] = useState(10000)
   const [loading, setLoading] = useState(false)
   const [streamEvents, setStreamEvents] = useState([])
   const [results, setResults] = useState(null)
@@ -22,7 +23,7 @@ function App() {
   const [awaitingReply, setAwaitingReply] = useState(false)
   const [relatedMarkets, setRelatedMarkets] = useState([])
 
-  const runAnalysis = useCallback(async (query) => {
+  const runAnalysis = useCallback(async (query, analysisBudget) => {
     if (!query.trim()) return
 
     setChatHistory(prev => [...prev, { role: 'user', content: query }])
@@ -36,7 +37,7 @@ function App() {
       const response = await fetch(`${API_URL}/prediction-markets/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, budget: analysisBudget || 10000 }),
       })
 
       if (!response.ok) {
@@ -89,9 +90,9 @@ function App() {
   }, [])
 
   const handleAnalyze = useCallback(() => {
-    runAnalysis(businessDescription)
+    runAnalysis(businessDescription, budget)
     setBusinessDescription('')
-  }, [businessDescription, runAnalysis])
+  }, [businessDescription, budget, runAnalysis])
 
   const handleReply = useCallback((message) => {
     setAwaitingReply(false)
@@ -125,6 +126,8 @@ function App() {
               <IntakeForm
                 businessDescription={businessDescription}
                 onDescriptionChange={setBusinessDescription}
+                budget={budget}
+                onBudgetChange={setBudget}
                 onAnalyze={handleAnalyze}
                 loading={loading}
               />
