@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import time
 import httpx
@@ -272,3 +273,127 @@ async def web_search(query: str) -> str:
         return "\n".join(lines)
     except Exception:
         return f"Web search failed for: {query}"
+
+
+# --- Crustdata Company Intelligence ---
+
+CRUSTDATA_API_URL = "https://api.crustdata.com"
+CRUSTDATA_TOKEN = os.environ.get("CRUSTDATA_API_KEY", "")
+
+
+async def enrich_company(company_name: str = "", company_domain: str = "") -> dict:
+    """Identify and enrich a company via Crustdata for risk-relevant intelligence."""
+    if not CRUSTDATA_TOKEN:
+        return {"error": "Crustdata API key not configured"}
+
+    headers = {
+        "Authorization": f"Token {CRUSTDATA_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        # Step 1: Identify the company
+        identify_payload = {}
+        if company_domain:
+            identify_payload["query_company_website"] = company_domain
+        elif company_name:
+            identify_payload["query_company_name"] = company_name
+        else:
+            return {"error": "Provide company_name or company_domain"}
+
+        identify_payload["count"] = 1
+
+        try:
+            resp = await client.post(
+                f"{CRUSTDATA_API_URL}/screener/identify/",
+                headers=headers,
+                json=identify_payload,
+            )
+            resp.raise_for_status()
+            matches = resp.json()
+        except Exception as e:
+            return {"error": f"Company identification failed: {str(e)}"}
+
+        if not matches:
+            return {"error": f"No company found for: {company_name or company_domain}"}
+
+        company = matches[0] if isinstance(matches, list) else matches
+        domain = company.get("company_website_domain") or company.get("primary_domain", "")
+
+        if not domain:
+            # Return what we got from identify
+            return {
+                "company_name": company.get("company_name", ""),
+                "linkedin_url": company.get("linkedin_url", ""),
+                "note": "No domain found — enrichment skipped",
+            }
+
+        # Step 2: Enrich with risk-relevant fields
+        try:
+            enrich_resp = await client.get(
+                f"{CRUSTDATA_API_URL}/screener/company",
+                headers=headers,
+                params={
+                    "company_domain": domain,
+                    "fields": "headcount,funding_and_investment,competitors,news_articles,taxonomy",
+                },
+            )
+            enrich_resp.raise_for_status()
+            enriched = enrich_resp.json()
+        except Exception as e:
+            return {"error": f"Company enrichment failed: {str(e)}"}
+
+        if not enriched:
+            return {"error": "Enrichment returned no data"}
+
+        profile = enriched[0] if isinstance(enriched, list) else enriched
+
+        # Extract the fields most useful for hedging decisions
+        result = {
+            "company_name": profile.get("company_name", ""),
+            "domain": profile.get("company_website_domain", ""),
+            "hq_location": profile.get("hq_location", ""),
+            "hq_country": profile.get("hq_country", ""),
+            "year_founded": profile.get("year_founded"),
+            "company_type": profile.get("company_type", ""),
+            "linkedin_industries": profile.get("linkedin_industries", []),
+            "crunchbase_categories": profile.get("crunchbase_categories", []),
+            "employee_count": profile.get("employee_count_range", ""),
+            "estimated_revenue_lower_usd": profile.get("estimated_revenue_lower_bound_usd"),
+            "estimated_revenue_upper_usd": profile.get("estimated_revenue_higher_bound_usd"),
+        }
+
+        # Headcount details
+        headcount = profile.get("headcount", {})
+        if headcount:
+            result["headcount_latest"] = headcount.get("latest_count")
+            result["headcount_growth_6m_pct"] = headcount.get("growth_6m_percent")
+            result["headcount_growth_12m_pct"] = headcount.get("growth_12m_percent")
+
+        # Funding
+        funding = profile.get("funding_and_investment", {})
+        if funding:
+            result["total_funding_usd"] = funding.get("crunchbase_total_investment_usd")
+            result["last_funding_round"] = funding.get("last_funding_round_type")
+            result["last_funding_date"] = funding.get("last_funding_date")
+
+        # Competitors
+        competitors = profile.get("competitors", {})
+        if competitors:
+            comp_list = competitors.get("competitor_names", [])
+            result["competitors"] = comp_list[:10] if comp_list else []
+
+        # Recent news (risk signals)
+        news = profile.get("news_articles", [])
+        if news:
+            result["recent_news"] = [
+                {"title": n.get("title", ""), "date": n.get("published_at", "")}
+                for n in news[:5]
+            ]
+
+        # Taxonomy / markets
+        taxonomy = profile.get("taxonomy", {})
+        if taxonomy:
+            result["markets"] = taxonomy.get("markets", [])
+
+        return result

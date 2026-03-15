@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AlertTriangle, Info, ChevronDown, ChevronUp, ArrowLeft, ExternalLink, TrendingUp, Shield, Clock, BarChart3, Zap, Copy, Check } from 'lucide-react'
 import PortfolioSummary from './PortfolioSummary'
+import QuantAnalytics from './QuantAnalytics'
 import TrendingMarkets from './TrendingMarkets'
 import MarketDepthBar from './MarketDepthBar'
 import PriceChart from './PriceChart'
@@ -374,6 +375,9 @@ export default function Results({ data, onReset, relatedMarkets }) {
           )}
         </section>
       )}
+
+      {/* Quant Analytics Panel */}
+      <QuantAnalytics data={data} />
 
       {/* Related Markets the agent considered */}
       <TrendingMarkets markets={relatedMarkets} />

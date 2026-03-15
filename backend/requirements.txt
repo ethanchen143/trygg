@@ -4,3 +4,5 @@ httpx
 openai
 pydantic
 python-dotenv
+numpy
+scipy

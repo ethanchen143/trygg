@@ -69,9 +69,52 @@ function mapContract(contract, allocation) {
 }
 
 export function transformResponse(data) {
-  // If already in the full frontend format, normalize and pass through
+  // New format: quant engine returns { positions, portfolio_metrics, simulation }
+  if (data && !Array.isArray(data) && data.positions && data.portfolio_metrics) {
+    const metrics = data.portfolio_metrics
+    const sim = data.simulation || {}
+
+    const positions = data.positions.map((p) => ({
+      ...mapContract(p, p.allocation || 0),
+      kelly_fraction: p.kelly_fraction,
+      expected_value: p.expected_value,
+      portfolio_weight_pct: p.portfolio_weight_pct,
+      shares: p.shares,
+      max_payout: p.max_payout,
+      return_multiple: p.return_multiple,
+    }))
+
+    const warnings = generateWarnings(positions)
+
+    return {
+      positions,
+      risks: [],
+      total_cost: metrics.total_cost || 0,
+      total_max_profit: metrics.max_payout || 0,
+      total_exposure: 0,
+      expected_value: metrics.expected_value || 0,
+      coverage_ratio: metrics.coverage_ratio || 0,
+      diversification_score: metrics.diversification_score || 0,
+      budget_utilization: metrics.budget_utilization || 0,
+      simulation: {
+        p10: sim.p10 || 0,
+        p25: sim.p25 || 0,
+        p50: sim.p50 || 0,
+        p75: sim.p75 || 0,
+        p90: sim.p90 || 0,
+        mean: sim.mean || 0,
+        prob_profit: sim.prob_profit || 0,
+        expected_payout: sim.expected_payout || 0,
+        histogram: sim.histogram || [],
+      },
+      budget_rationale: `Kelly + mean-variance optimized across ${positions.length} positions. $${(metrics.total_cost || 0).toLocaleString()} premium → $${(metrics.max_payout || 0).toLocaleString()} max protection (${(metrics.coverage_ratio || 0).toFixed(1)}x). Monte Carlo: ${(sim.prob_profit || 0)}% chance of profit, median outcome $${(sim.p50 || 0).toLocaleString()}.`,
+      warnings,
+      unhedgeable_risks: [],
+    }
+  }
+
+  // Legacy format: already has positions object
   if (data && !Array.isArray(data) && data.positions) {
-    // Enrich existing positions with new fields if present
     const positions = data.positions.map((p) => ({
       ...p,
       contract_title: p.contract_title || p.title,
@@ -81,7 +124,7 @@ export function transformResponse(data) {
     return { ...data, positions }
   }
 
-  // Backend returns a flat array of contracts — transform it
+  // Fallback: flat array of contracts (no quant engine)
   const contracts = Array.isArray(data) ? data : []
   if (contracts.length === 0) {
     return {
@@ -96,7 +139,6 @@ export function transformResponse(data) {
     }
   }
 
-  // Weight allocation by confidence (higher confidence = more allocation)
   const totalConfidence = contracts.reduce((s, c) => s + (c.confidence || 0.5), 0)
   const baseBudget = contracts.length * DEFAULT_ALLOCATION_PER_POSITION
 

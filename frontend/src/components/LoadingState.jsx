@@ -1,10 +1,11 @@
 import { useRef, useEffect, useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Globe, CheckCircle2, Brain, Radar, BarChart3, Shield } from 'lucide-react'
+import { Search, Globe, CheckCircle2, Brain, Radar, BarChart3, Shield, Building2 } from 'lucide-react'
 
 function EventIcon({ event }) {
   if (event.type === 'tool_call') {
     if (event.tool === 'web_search') return <Globe size={15} />
+    if (event.tool === 'enrich_company') return <Building2 size={15} />
     return <Search size={15} />
   }
   if (event.type === 'tool_result') return <CheckCircle2 size={15} />
