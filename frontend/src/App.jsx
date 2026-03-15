@@ -19,6 +19,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [streamEvents, setStreamEvents] = useState([])
   const [results, setResults] = useState(null)
+  const [candidates, setCandidates] = useState(null)
   const [chatHistory, setChatHistory] = useState([])
   const [awaitingReply, setAwaitingReply] = useState(false)
   const [relatedMarkets, setRelatedMarkets] = useState([])
@@ -30,6 +31,7 @@ function App() {
     setLoading(true)
     setStreamEvents([])
     setResults(null)
+    setCandidates(null)
     setAwaitingReply(false)
     setRelatedMarkets([])
 
@@ -63,7 +65,9 @@ function App() {
           try {
             const event = JSON.parse(line.slice(6))
 
-            if (event.type === 'recommendations') {
+            if (event.type === 'candidates') {
+              setCandidates(event.data)
+            } else if (event.type === 'recommendations') {
               setResults(transformResponse(event.data))
             } else if (event.type === 'related_markets') {
               setRelatedMarkets(event.data || [])
@@ -73,6 +77,29 @@ function App() {
             } else if (event.type === 'error') {
               setChatHistory(prev => [...prev, { role: 'assistant', content: event.message }])
               setAwaitingReply(true)
+            } else if (event.type === 'thinking_update') {
+              // Merge thinking_update into the corresponding thinking event
+              setStreamEvents(prev => {
+                const updated = [...prev]
+                let thinkingIdx = -1
+                for (let i = updated.length - 1; i >= 0; i--) {
+                  if (updated[i].type === 'thinking' && updated[i].turn === event.turn) {
+                    thinkingIdx = i
+                    break
+                  }
+                }
+                if (thinkingIdx !== -1) {
+                  updated[thinkingIdx] = {
+                    ...updated[thinkingIdx],
+                    ...event,
+                    type: 'thinking', // keep type as thinking
+                    message: updated[thinkingIdx].message, // keep original message
+                  }
+                } else {
+                  updated.push(event)
+                }
+                return updated
+              })
             } else {
               setStreamEvents(prev => [...prev, event])
             }
@@ -89,6 +116,24 @@ function App() {
     }
   }, [])
 
+  const handleBudgetChange = useCallback(async (newBudget) => {
+    setBudget(newBudget)
+    if (!candidates || newBudget < 100) return
+
+    try {
+      const resp = await fetch(`${API_URL}/api/reoptimize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidates, budget: newBudget }),
+      })
+      if (!resp.ok) return
+      const portfolio = await resp.json()
+      setResults(transformResponse(portfolio))
+    } catch {
+      // silently fail — keep existing results
+    }
+  }, [candidates])
+
   const handleAnalyze = useCallback(() => {
     runAnalysis(businessDescription, budget)
     setBusinessDescription('')
@@ -101,11 +146,13 @@ function App() {
 
   const handleReset = useCallback(() => {
     setResults(null)
+    setCandidates(null)
     setChatHistory([])
     setBusinessDescription('')
     setStreamEvents([])
     setAwaitingReply(false)
     setRelatedMarkets([])
+    setBudget(10000)
   }, [])
 
   const hasStarted = chatHistory.length > 0 || loading || results
@@ -126,8 +173,6 @@ function App() {
               <IntakeForm
                 businessDescription={businessDescription}
                 onDescriptionChange={setBusinessDescription}
-                budget={budget}
-                onBudgetChange={setBudget}
                 onAnalyze={handleAnalyze}
                 loading={loading}
               />
@@ -154,7 +199,13 @@ function App() {
               </AnimatePresence>
 
               {results && !loading && (
-                <Results data={results} onReset={handleReset} relatedMarkets={relatedMarkets} />
+                <Results
+                  data={results}
+                  onReset={handleReset}
+                  relatedMarkets={relatedMarkets}
+                  budget={budget}
+                  onBudgetChange={handleBudgetChange}
+                />
               )}
             </motion.div>
           )}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { ChevronDown, ChevronUp, Activity, PieChart, TrendingUp, Calculator, BarChart3, Target, Percent, DollarSign } from 'lucide-react'
 
@@ -96,7 +96,7 @@ function PositionTable({ positions }) {
   )
 }
 
-export default function QuantAnalytics({ data }) {
+export default function QuantAnalytics({ data, budget, onBudgetChange }) {
   const [open, setOpen] = useState(false)
   const positions = data.positions || []
   const sim = data.simulation || {}
@@ -105,6 +105,23 @@ export default function QuantAnalytics({ data }) {
   const ev = data.expected_value ?? 0
   const diversification = data.diversification_score ?? 0
   const coverageRatio = data.coverage_ratio ?? (totalCost > 0 ? maxPayout / totalCost : 0)
+  const presets = [5000, 10000, 25000, 50000]
+  const [localBudget, setLocalBudget] = useState(budget)
+  const debounceRef = useRef(null)
+
+  const handleBudgetInput = useCallback((val) => {
+    setLocalBudget(val)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      if (val >= 100) onBudgetChange(val)
+    }, 500)
+  }, [onBudgetChange])
+
+  const handlePreset = useCallback((val) => {
+    setLocalBudget(val)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    onBudgetChange(val)
+  }, [onBudgetChange])
 
   if (positions.length === 0) return null
 
@@ -132,14 +149,38 @@ export default function QuantAnalytics({ data }) {
           exit={{ opacity: 0, height: 0 }}
           transition={{ duration: 0.3 }}
         >
+          {/* Budget adjuster */}
+          <div className="qa-budget-section">
+            <div className="qa-budget-row">
+              <DollarSign size={16} className="qa-budget-icon" />
+              <div className="qa-budget-input-wrap">
+                <span className="qa-budget-prefix">$</span>
+                <input
+                  type="number"
+                  className="qa-budget-input"
+                  value={localBudget}
+                  min={100}
+                  step={1000}
+                  onChange={(e) => handleBudgetInput(Number(e.target.value) || 0)}
+                />
+              </div>
+              <div className="qa-budget-presets">
+                {presets.map((val) => (
+                  <button
+                    key={val}
+                    className={`qa-budget-preset${localBudget === val ? ' qa-budget-preset--active' : ''}`}
+                    onClick={() => handlePreset(val)}
+                  >
+                    ${val >= 1000 ? `${val / 1000}k` : val}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="qa-budget-label">Total Premium — Capital at risk</div>
+          </div>
+
           {/* Top metrics row */}
           <div className="qa-metrics-grid">
-            <MetricCard
-              icon={DollarSign}
-              label="Total Premium"
-              value={`$${totalCost.toLocaleString()}`}
-              sub="Capital at risk"
-            />
             <MetricCard
               icon={Target}
               label="Max Protection"

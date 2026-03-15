@@ -270,7 +270,7 @@ function buildSummaryText(data) {
   return text
 }
 
-export default function Results({ data, onReset, relatedMarkets }) {
+export default function Results({ data, onReset, relatedMarkets, budget, onBudgetChange }) {
   const [showRisks, setShowRisks] = useState(false)
   const [copied, setCopied] = useState(false)
   const positions = data.positions || []
@@ -377,7 +377,7 @@ export default function Results({ data, onReset, relatedMarkets }) {
       )}
 
       {/* Quant Analytics Panel */}
-      <QuantAnalytics data={data} />
+      <QuantAnalytics data={data} budget={budget} onBudgetChange={onBudgetChange} />
 
       {/* Related Markets the agent considered */}
       <TrendingMarkets markets={relatedMarkets} />

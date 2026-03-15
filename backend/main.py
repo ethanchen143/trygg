@@ -213,7 +213,7 @@ async def run_agent_stream(user_query: str, budget: float = DEFAULT_BUDGET):
 
     msg = None
     for turn in range(15):
-        yield sse({"type": "status", "message": f"Thinking... (turn {turn + 1})"})
+        yield sse({"type": "thinking", "turn": turn + 1, "message": f"Thinking... (turn {turn + 1})", "status": "running"})
         yield keepalive()
 
         logger.info(f"=== TURN {turn + 1} === Calling LLM...")
@@ -229,11 +229,47 @@ async def run_agent_stream(user_query: str, budget: float = DEFAULT_BUDGET):
                      f"refusal={msg.refusal if hasattr(msg, 'refusal') else 'N/A'}")
         messages.append(_msg_to_dict(msg))
 
+        # Extract reasoning summary if available (OpenAI reasoning models)
+        reasoning_text = None
+        if hasattr(msg, 'reasoning_content') and msg.reasoning_content:
+            reasoning_text = msg.reasoning_content
+        elif hasattr(msg, 'reasoning') and msg.reasoning:
+            reasoning_text = msg.reasoning
+
         if not msg.tool_calls:
             logger.info(f"=== TURN {turn + 1} === No tool calls — agent finished.")
+            yield sse({
+                "type": "thinking_update",
+                "turn": turn + 1,
+                "message": f"Finished analysis (turn {turn + 1})",
+                "status": "done",
+                "reasoning": reasoning_text,
+                "details": ["Compiling final recommendations"],
+            })
             if msg.content:
                 logger.info(f"Final response (first 500 chars): {msg.content[:500]}")
             break
+
+        # Build details of what the model decided to do this turn
+        planned_calls = []
+        for tc in msg.tool_calls:
+            fn_name = tc.function.name
+            args = json.loads(tc.function.arguments)
+            desc = TOOL_DESCRIPTIONS.get(fn_name, fn_name)
+            query_str = args.get("query") or args.get("company_name") or args.get("company_domain") or ""
+            if query_str:
+                planned_calls.append(f'{desc} for "{query_str}"')
+            else:
+                planned_calls.append(desc)
+
+        yield sse({
+            "type": "thinking_update",
+            "turn": turn + 1,
+            "message": f"Turn {turn + 1}: Planning {len(msg.tool_calls)} action{'s' if len(msg.tool_calls) != 1 else ''}",
+            "status": "acting",
+            "reasoning": reasoning_text,
+            "details": planned_calls,
+        })
 
         logger.info(f"=== TURN {turn + 1} === {len(msg.tool_calls)} tool call(s):")
         for tc in msg.tool_calls:
@@ -315,6 +351,7 @@ async def run_agent_stream(user_query: str, budget: float = DEFAULT_BUDGET):
         portfolio = quant.optimize_portfolio(recommendations, budget=budget)
 
         yield sse({"type": "status", "message": "Running Monte Carlo simulation..."})
+        yield sse({"type": "candidates", "data": recommendations})
         yield sse({"type": "recommendations", "data": portfolio})
 
         # Emit related markets (searched but not selected)
@@ -352,6 +389,21 @@ async def run_agent_stream(user_query: str, budget: float = DEFAULT_BUDGET):
 class QueryRequest(BaseModel):
     query: str
     budget: float = 10000
+
+
+class ReoptimizeRequest(BaseModel):
+    candidates: list[dict]
+    budget: float = 10000
+
+
+@app.post("/api/reoptimize")
+async def reoptimize(req: ReoptimizeRequest):
+    """Re-run quant engine with a new budget on existing candidates (no LLM call)."""
+    try:
+        portfolio = quant.optimize_portfolio(req.candidates, budget=req.budget)
+        return portfolio
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Live Market Data Proxy Endpoints ──

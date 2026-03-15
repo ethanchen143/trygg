@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Globe, CheckCircle2, Brain, Radar, BarChart3, Shield, Building2, ChevronRight, ExternalLink } from 'lucide-react'
+import { Search, Globe, CheckCircle2, Brain, Radar, BarChart3, Shield, Building2, ChevronRight, ChevronDown, ExternalLink, Sparkles } from 'lucide-react'
 
 function EventIcon({ event }) {
   if (event.type === 'tool_call') {
@@ -110,10 +110,47 @@ function WebResultsDetail({ text }) {
   )
 }
 
+function ThinkingDetail({ event }) {
+  const hasReasoning = event.reasoning && event.reasoning.length > 0
+  const hasDetails = event.details && event.details.length > 0
+
+  if (!hasReasoning && !hasDetails) return null
+
+  return (
+    <div className="detail-panel-content thinking-detail">
+      {hasReasoning && (
+        <div className="thinking-reasoning">
+          <div className="thinking-reasoning-label">
+            <Sparkles size={11} />
+            <span>Model reasoning</span>
+          </div>
+          <div className="thinking-reasoning-text">{event.reasoning}</div>
+        </div>
+      )}
+      {hasDetails && (
+        <div className="thinking-actions">
+          <div className="thinking-actions-label">Planned actions</div>
+          <ul className="thinking-actions-list">
+            {event.details.map((detail, i) => (
+              <li key={i} className="thinking-action-item">
+                <ChevronRight size={10} className="thinking-action-arrow" />
+                <span>{detail}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FeedEvent({ event, index }) {
   const [expanded, setExpanded] = useState(false)
-  const hasDetails = event.type === 'tool_result' && (event.contracts?.length > 0 || event.enrichment || event.web_results)
-  const isClickable = hasDetails
+  const isThinking = event.type === 'thinking'
+  const hasToolDetails = event.type === 'tool_result' && (event.contracts?.length > 0 || event.enrichment || event.web_results)
+  const hasThinkingDetails = isThinking && (event.reasoning || event.details?.length > 0)
+  const isClickable = hasToolDetails || hasThinkingDetails
+  const isThinkingRunning = isThinking && event.status === 'running'
 
   return (
     <motion.div
@@ -124,14 +161,14 @@ function FeedEvent({ event, index }) {
       transition={{ duration: 0.3 }}
     >
       <div
-        className={`feed-event feed-event--${event.type}${isClickable ? ' feed-event--clickable' : ''}${expanded ? ' feed-event--expanded' : ''}`}
+        className={`feed-event feed-event--${event.type}${isClickable ? ' feed-event--clickable' : ''}${expanded ? ' feed-event--expanded' : ''}${isThinking ? ' feed-event--thinking' : ''}`}
         onClick={isClickable ? () => setExpanded(e => !e) : undefined}
         role={isClickable ? 'button' : undefined}
         tabIndex={isClickable ? 0 : undefined}
         onKeyDown={isClickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v) } } : undefined}
       >
         <div className="feed-event-icon">
-          <EventIcon event={event} />
+          {isThinking ? <Brain size={15} /> : <EventIcon event={event} />}
         </div>
         <span className="feed-event-text">
           {event.message || event.summary}
@@ -139,7 +176,13 @@ function FeedEvent({ event, index }) {
         {event.type === 'tool_call' && (
           <div className="feed-event-spinner" />
         )}
+        {isThinkingRunning && (
+          <div className="feed-event-spinner thinking-spinner" />
+        )}
         {event.type === 'tool_result' && !isClickable && (
+          <span className="feed-event-done">Done</span>
+        )}
+        {isThinking && event.status === 'done' && !hasThinkingDetails && (
           <span className="feed-event-done">Done</span>
         )}
         {isClickable && (
@@ -151,7 +194,7 @@ function FeedEvent({ event, index }) {
       </div>
 
       <AnimatePresence>
-        {expanded && hasDetails && (
+        {expanded && (hasToolDetails || hasThinkingDetails) && (
           <motion.div
             className="detail-panel"
             initial={{ height: 0, opacity: 0 }}
@@ -159,6 +202,7 @@ function FeedEvent({ event, index }) {
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.25, ease: 'easeInOut' }}
           >
+            {hasThinkingDetails && <ThinkingDetail event={event} />}
             {event.contracts?.length > 0 && (
               <div className="detail-panel-contracts">
                 <div className="detail-panel-header">
