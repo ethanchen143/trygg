@@ -1386,6 +1386,22 @@
   margin-bottom: 20px;
 }
 
+.detail-reasoning--hero {
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-reasoning--hero .detail-section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+}
+
 .position-reasoning-text {
   font-size: 16px;
   color: var(--text-1);

@@ -39,8 +39,6 @@ function PositionCard({ position, index, totalCost, featured }) {
             </span>
           </div>
           <div className="position-card-subtitle">
-            <Shield size={12} />
-            hedges {position.risk?.event || 'identified risk'}
             <span className="position-card-alloc">${allocation.toLocaleString()}</span>
           </div>
         </div>
@@ -62,6 +60,19 @@ function PositionCard({ position, index, totalCost, featured }) {
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3 }}
           >
+            {/* AI Reasoning — hero placement */}
+            {position.reasoning && (
+              <div className="detail-reasoning detail-reasoning--hero">
+                <div className="detail-section-label">
+                  <Zap size={14} />
+                  AI Reasoning
+                </div>
+                <p className="position-reasoning-text">
+                  {position.reasoning}
+                </p>
+              </div>
+            )}
+
             {/* Market Depth Visualization */}
             <div className="detail-depth-section">
               <div className="detail-section-label">Market Probability</div>
@@ -182,14 +193,6 @@ function PositionCard({ position, index, totalCost, featured }) {
                 width={560}
                 height={120}
               />
-            </div>
-
-            {/* Reasoning */}
-            <div className="detail-reasoning">
-              <div className="detail-section-label">AI Reasoning</div>
-              <p className="position-reasoning-text">
-                {position.reasoning}
-              </p>
             </div>
 
             {position.url && (
