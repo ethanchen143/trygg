@@ -190,6 +190,52 @@ TOOL_DESCRIPTIONS = {
     "enrich_company": "Looking up company intelligence",
 }
 
+THINKING_SUMMARIZER_PROMPT = """You are narrating the internal reasoning of an AI hedge analyst agent in real-time.
+Given the conversation so far and the agent's next actions, write 2-4 sentences explaining what the agent is thinking and why it chose these actions.
+Write in first person ("I") as if you ARE the agent thinking out loud. Be specific about risk analysis logic, not generic.
+Keep it concise and insightful. Do NOT use markdown or bullet points. Just flowing analytical thought."""
+
+
+def _generate_thinking_summary(messages: list, tool_calls: list, turn: int) -> str | None:
+    """Generate a readable thinking summary for the current turn using a fast model."""
+    try:
+        # Build a compact context: user query + what tools we're about to call
+        tool_desc = []
+        for tc in tool_calls:
+            args = json.loads(tc.function.arguments)
+            query = args.get("query") or args.get("company_name") or args.get("company_domain") or ""
+            tool_desc.append(f"- {tc.function.name}({query})")
+
+        # Get the user's original query
+        user_msg = next((m["content"] for m in messages if m.get("role") == "user"), "")
+
+        # Get previous tool results for context (last 3)
+        prev_results = []
+        for m in messages[-6:]:
+            if m.get("role") == "tool":
+                content = m.get("content", "")
+                prev_results.append(content[:300])
+
+        prompt = f"User's situation: {user_msg[:500]}\n\n"
+        if prev_results:
+            prompt += f"What I've learned so far from previous searches:\n{'...'.join(prev_results[-2:])}\n\n"
+        prompt += f"Turn {turn} — I'm now calling these tools:\n" + "\n".join(tool_desc)
+        prompt += "\n\nNarrate my reasoning (2-4 sentences, first person):"
+
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": THINKING_SUMMARIZER_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=200,
+            temperature=0.7,
+        )
+        return resp.choices[0].message.content
+    except Exception as e:
+        logger.warning(f"Thinking summary generation failed: {e}")
+        return None
+
 
 async def run_agent_stream(user_query: str, budget: float = DEFAULT_BUDGET):
     """Async generator yielding SSE events as the agent works."""
@@ -229,13 +275,6 @@ async def run_agent_stream(user_query: str, budget: float = DEFAULT_BUDGET):
                      f"refusal={msg.refusal if hasattr(msg, 'refusal') else 'N/A'}")
         messages.append(_msg_to_dict(msg))
 
-        # Extract reasoning summary if available (OpenAI reasoning models)
-        reasoning_text = None
-        if hasattr(msg, 'reasoning_content') and msg.reasoning_content:
-            reasoning_text = msg.reasoning_content
-        elif hasattr(msg, 'reasoning') and msg.reasoning:
-            reasoning_text = msg.reasoning
-
         if not msg.tool_calls:
             logger.info(f"=== TURN {turn + 1} === No tool calls — agent finished.")
             yield sse({
@@ -243,7 +282,7 @@ async def run_agent_stream(user_query: str, budget: float = DEFAULT_BUDGET):
                 "turn": turn + 1,
                 "message": f"Finished analysis (turn {turn + 1})",
                 "status": "done",
-                "reasoning": reasoning_text,
+                "reasoning": "Compiling final portfolio recommendations based on all the contracts and data gathered.",
                 "details": ["Compiling final recommendations"],
             })
             if msg.content:
@@ -261,6 +300,9 @@ async def run_agent_stream(user_query: str, budget: float = DEFAULT_BUDGET):
                 planned_calls.append(f'{desc} for "{query_str}"')
             else:
                 planned_calls.append(desc)
+
+        # Generate a readable thinking trace using a fast model
+        reasoning_text = _generate_thinking_summary(messages, msg.tool_calls, turn + 1)
 
         yield sse({
             "type": "thinking_update",

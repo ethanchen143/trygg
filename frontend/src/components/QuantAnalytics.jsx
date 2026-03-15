@@ -246,10 +246,6 @@ export default function QuantAnalytics({ data, budget, onBudgetChange }) {
                 <span className="qa-pctl-label">Best Case (P90)</span>
                 <span className="qa-pctl-value qa-pctl--profit">${(sim.p90 || 0).toLocaleString()}</span>
               </div>
-              <div className="qa-pctl">
-                <span className="qa-pctl-label">Mean Outcome</span>
-                <span className={`qa-pctl-value ${(sim.mean || 0) >= 0 ? 'qa-pctl--profit' : 'qa-pctl--loss'}`}>${(sim.mean || 0).toLocaleString()}</span>
-              </div>
             </div>
           </div>
 
